@@ -18,18 +18,87 @@ defmodule MySystemWeb.LoadControl do
   @impl Phoenix.LiveDashboard.PageBuilder
   def render(assigns) do
     ~H"""
-    <.form for={@form} phx-submit="submit_form">
-      <.input field={@form[:jobs]} type="number" min="0" label="jobs" />
-      <.input field={@form[:schedulers_online]} type="number" min="1" label="schedulers" />
-      <button style="display:none;">Save</button>
-    </.form>
+    <div class="mx-auto max-w-5xl">
+      <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6">System Load Control</h2>
 
-    <.jobs_successes_chart points={@success_values} num_points={MySystem.LoadControl.num_points()} />
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          <div class="bg-gray-50 p-6 rounded-lg shadow-inner">
+            <h3 class="text-lg font-semibold text-gray-700 mb-4">Configuration</h3>
+            <.form for={@form} phx-submit="submit_form" class="space-y-6">
+              <div>
+                <.input
+                  field={@form[:jobs]}
+                  type="number"
+                  min="0"
+                  label="Active Jobs"
+                  class="font-semibold"
+                />
+                <p class="mt-1 text-sm text-gray-600">Number of concurrent jobs to run in the system</p>
+              </div>
 
-    <.scheduler_utilization_chart
-      points={@scheduler_utilizations}
-      num_points={MySystem.LoadControl.num_points()}
-    />
+              <div>
+                <.input
+                  field={@form[:schedulers_online]}
+                  type="number"
+                  min="1"
+                  label="Active Schedulers"
+                  class="font-semibold"
+                />
+                <p class="mt-1 text-sm text-gray-600">Number of BEAM schedulers to use (cores)</p>
+              </div>
+
+              <div>
+                <.button type="submit" class="w-full justify-center">
+                  Apply Settings
+                </.button>
+              </div>
+            </.form>
+          </div>
+
+          <div class="bg-blue-50 p-6 rounded-lg shadow-inner">
+            <h3 class="text-lg font-semibold text-gray-700 mb-4">System Overview</h3>
+            <div class="space-y-4">
+              <div>
+                <h4 class="font-medium text-gray-700">Current Load</h4>
+                <p class="text-2xl font-bold"><%= MySystem.LoadControl.target_load() %> jobs</p>
+              </div>
+              <div>
+                <h4 class="font-medium text-gray-700">Schedulers Online</h4>
+                <p class="text-2xl font-bold"><%= MySystem.LoadControl.num_schedulers() %> cores</p>
+              </div>
+              <div>
+                <h4 class="font-medium text-gray-700">System Status</h4>
+                <div class="flex items-center space-x-2">
+                  <span class="h-3 w-3 bg-green-500 rounded-full"></span>
+                  <span class="font-medium">Running</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <h3 class="text-lg font-semibold text-gray-700 mb-2">Performance Metrics</h3>
+          <p class="text-sm text-gray-600 mb-4">Real-time monitoring of system performance metrics</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h3 class="text-lg font-semibold text-gray-700 mb-4">Successful Jobs per Second</h3>
+        <p class="text-sm text-gray-600 mb-4">Number of jobs completed successfully over time</p>
+        <.jobs_successes_chart points={@success_values} num_points={MySystem.LoadControl.num_points()} />
+      </div>
+
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <h3 class="text-lg font-semibold text-gray-700 mb-4">Scheduler Utilization</h3>
+        <p class="text-sm text-gray-600 mb-4">Percentage of scheduler capacity being utilized</p>
+        <.scheduler_utilization_chart
+          points={@scheduler_utilizations}
+          num_points={MySystem.LoadControl.num_points()}
+        />
+      </div>
+    </div>
     """
   end
 
@@ -70,9 +139,12 @@ defmodule MySystemWeb.LoadControl do
     assigns =
       Map.merge(assigns, %{
         width: assigns.num_points,
-        height: 500,
-        title: "scheduler usage",
-        legends: Enum.map([0, 25, 50, 75, 100], &%{title: "#{&1}%", at: &1 / 100})
+        height: 300,
+        title: "Scheduler Utilization",
+        color: "#4338ca", # indigo-700
+        legends: Enum.map([0, 25, 50, 75, 100], &%{title: "#{&1}%", at: &1 / 100}),
+        x_label: "Time",
+        y_label: "Utilization (%)"
       })
 
     ~H"""
@@ -100,10 +172,13 @@ defmodule MySystemWeb.LoadControl do
     assigns =
       Map.merge(assigns, %{
         width: assigns.num_points,
-        height: 500,
-        title: "successful jobs/second",
+        height: 300,
+        title: "Successful Jobs Per Second",
+        color: "#059669", # emerald-600
         legends: legends,
-        points: points
+        points: points,
+        x_label: "Time",
+        y_label: "Jobs/sec"
       })
 
     ~H"""
@@ -118,41 +193,77 @@ defmodule MySystemWeb.LoadControl do
 
   defp graph(assigns) do
     ~H"""
-    <span>
-      <svg viewBox={"0 0 #{@width + 150} #{@height + 150}"} height={@height} class="chart">
+    <div class="bg-white rounded-lg p-4">
+      <svg viewBox={"0 0 #{@width + 150} #{@height + 150}"} height={@height} class="w-full chart">
         <style>
-          .title { font-size: 30px;}
+          .title { font-size: 18px; font-weight: 600; }
+          .axis-label { font-size: 14px; font-weight: 500; }
+          .grid-line { stroke: #e5e7eb; }
+          .tick-label { font-size: 12px; }
+          .chart-line { stroke-linecap: round; stroke-linejoin: round; }
         </style>
 
-        <g transform="translate(100, 100)">
-          <g stroke="black">
+        <g transform="translate(100, 60)">
+          <!-- Title -->
+          <g>
             <text
               class="title"
               text-anchor="middle"
-              dominant-baseline="central"
-              x="300"
-              y="-50"
-              fill="black"
+              x={@width / 2}
+              y="-30"
+              fill="#1f2937"
             >
               {@title}
             </text>
           </g>
 
+          <!-- Y-axis label -->
+          <g>
+            <text
+              class="axis-label"
+              text-anchor="middle"
+              transform="rotate(-90)"
+              x={-@height / 2}
+              y="-70"
+              fill="#4b5563"
+            >
+              {@y_label}
+            </text>
+          </g>
+
+          <!-- X-axis label -->
+          <g>
+            <text
+              class="axis-label"
+              text-anchor="middle"
+              x={@width / 2}
+              y={@height + 40}
+              fill="#4b5563"
+            >
+              {@x_label}
+            </text>
+          </g>
+
+          <!-- Y-axis tick marks and grid lines -->
           <%= for legend <- @legends do %>
-            <g stroke="black">
+            <g>
               <text
+                class="tick-label"
                 text-anchor="end"
                 dominant-baseline="central"
-                x="-20"
+                x="-10"
                 y={"#{y(legend.at, @height)}"}
-                fill="black"
+                fill="#6b7280"
               >
                 {legend.title}
               </text>
             </g>
 
-            <g stroke-width="1" stroke="gray" stroke-dasharray="4">
+            <g>
               <line
+                class="grid-line"
+                stroke-width="1"
+                stroke-dasharray="4"
                 x1="0"
                 x2={@width}
                 y1={"#{y(legend.at, @height)}"}
@@ -161,15 +272,36 @@ defmodule MySystemWeb.LoadControl do
             </g>
           <% end %>
 
-          <g stroke-width="2" stroke="black">
+          <!-- X and Y axes -->
+          <g stroke-width="2" stroke="#374151">
             <line x1="0" x2="0" y1="0" y2={@height} />
             <line x1="0" x2={@width} y1={@height} y2={@height} />
           </g>
 
-          <polyline fill="none" stroke="#0074d9" stroke-width="2" points={points(assigns)} />
+          <!-- Data line -->
+          <polyline
+            class="chart-line"
+            fill="none"
+            stroke={@color}
+            stroke-width="3"
+            points={points(assigns)}
+          />
+
+          <!-- Add area under curve with gradient -->
+          <defs>
+            <linearGradient id={"gradient-#{@title |> String.replace(" ", "-") |> String.downcase()}"} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color={@color} stop-opacity="0.3" />
+              <stop offset="100%" stop-color={@color} stop-opacity="0.05" />
+            </linearGradient>
+          </defs>
+
+          <path
+            d={"M 0,#{@height} " <> points(assigns) <> " L #{@width},#{@height} Z"}
+            fill={"url(#gradient-#{@title |> String.replace(" ", "-") |> String.downcase()})"}
+          />
         </g>
       </svg>
-    </span>
+    </div>
     """
   end
 
